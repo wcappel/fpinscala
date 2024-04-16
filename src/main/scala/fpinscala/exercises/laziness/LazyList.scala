@@ -1,10 +1,20 @@
 package fpinscala.exercises.laziness
 
+import fpinscala.exercises.laziness.LazyList.{cons, empty}
+
+import scala.annotation.tailrec
+
 enum LazyList[+A]:
   case Empty
   case Cons(h: () => A, t: () => LazyList[A])
 
-  def toList: List[A] = ???
+  def toList: List[A] =
+    @tailrec
+    def helper(z: List[A], t: LazyList[A]): List[A] =
+      t match
+        case Cons(x, xs) => helper(x() :: z, xs())
+        case Empty => z.reverse
+    helper(List.empty, this)
 
   def foldRight[B](z: => B)(f: (A, => B) => B): B = // The arrow `=>` in front of the argument type `B` means that the function `f` takes its second argument by name and may choose not to evaluate it.
     this match
@@ -19,13 +29,33 @@ enum LazyList[+A]:
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
 
-  def take(n: Int): LazyList[A] = ???
+  def take(n: Int): LazyList[A] =
+    this match
+      case Cons(x, xs) if n == 1 => cons(x(), Empty)
+      case Cons(x, xs) if n > 1 => cons(x(), xs().take(n - 1));
+      // The unevaluated expressions "x()" and "xs().take(n - 1)" are now the head and tail of the returned lazy list!
+      case _ => Empty
 
-  def drop(n: Int): LazyList[A] = ???
+  @tailrec
+  final def drop(n: Int): LazyList[A] =
+    this match
+      case Cons(x, xs) if n > 0 => xs().drop(n - 1)
+      case _ => this
 
-  def takeWhile(p: A => Boolean): LazyList[A] = ???
+  def takeWhile(p: A => Boolean): LazyList[A] =
+    this match
+      case Cons(x, xs) if p(x()) => cons(x(), xs().takeWhile(p))
+      case _ => Empty
 
-  def forAll(p: A => Boolean): Boolean = ???
+  def takeWhileViaFoldRight(p: A => Boolean): LazyList[A] =
+    this.foldRight(empty)((x, z) => {
+      if p(x) then cons(x, z) // If p(x), produce list w/ x as head and recursive expression on tail as z
+      else Empty // Else, terminate by not evaluating recursive call in expression z
+    })
+
+  def forAll(p: A => Boolean): Boolean =
+    this.foldRight(true)((x, z) => p(x) && z)
+    // Short-circuits when p(x) == false, leaving the nonstrict recursive call passed in via z unevaluated
 
   def headOption: Option[A] = ???
 
